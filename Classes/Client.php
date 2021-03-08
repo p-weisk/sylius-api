@@ -12,6 +12,7 @@ use GuzzleHttp\Client as HttpClient;
 use GuzzleHttp\Promise\PromiseInterface;
 use Neos\Flow\Annotations as Flow;
 use GuzzleHttp\HandlerStack;
+use PunktDe\Sylius\Api\Exception\SyliusApiConfigurationException;
 use Sainsburys\Guzzle\Oauth2\GrantType\PasswordCredentials;
 use Sainsburys\Guzzle\Oauth2\GrantType\RefreshToken;
 use Sainsburys\Guzzle\Oauth2\Middleware\OAuthMiddleware;
@@ -53,8 +54,13 @@ class Client
      */
     protected $httpClient;
 
+    /**
+     * @throws SyliusApiConfigurationException
+     */
     public function initializeObject(): void
     {
+        $this->validateConfiguration();
+
         $oauthClientConfig = [
             PasswordCredentials::CONFIG_USERNAME => $this->apiUser,
             PasswordCredentials::CONFIG_PASSWORD => $this->apiPassword,
@@ -122,7 +128,10 @@ class Client
      */
     public function putAsync(string $url, array $body): PromiseInterface
     {
-        return $this->httpClient->requestAsync('PUT', $url, ['json' => $body]);
+        return $this->httpClient->requestAsync('PUT', $url, ['body' => json_encode($body), 'headers' => [
+            'Content-Type' => 'application/json'
+        ]
+        ]);
     }
 
     /**
@@ -160,5 +169,26 @@ class Client
     public function getConfig($option = null)
     {
         return $this->httpClient->getConfig($option);
+    }
+
+    /**
+     * @throws SyliusApiConfigurationException
+     */
+    private function validateConfiguration(): void
+    {
+        $requiredSettingKeys = ['apiUser', 'apiPassword', 'baseUri', 'clientSecret', 'clientId'];
+        foreach ($requiredSettingKeys as $requiredSettingKey) {
+            if (trim($this->$requiredSettingKey) === '') {
+                throw new SyliusApiConfigurationException(sprintf('The required configuration setting %s for the Sylius API was not set or empty', $requiredSettingKeys), 1572349688);
+            }
+        }
+    }
+
+    /**
+     * @return string
+     */
+    public function getBaseUri(): string
+    {
+        return $this->baseUri;
     }
 }

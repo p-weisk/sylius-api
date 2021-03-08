@@ -10,11 +10,15 @@ The following Endpoints are currently implemented, see the [admin API documentat
 
 * Cart
 * CartItem
+* Checkout
 * Country
 * Customer
 * Product
 * ProductVariant
+* Order
+* User
 * Zone
+
 
 # Setup
 

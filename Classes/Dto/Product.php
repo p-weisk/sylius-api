@@ -8,6 +8,7 @@ namespace PunktDe\Sylius\Api\Dto;
 
 use Neos\Flow\ResourceManagement\PersistentResource;
 use PunktDe\Sylius\Api\Exception\SyliusApiException;
+use PunktDe\Sylius\Api\Resource\ProductResource;
 use PunktDe\Sylius\Api\Resource\ProductVariantResource;
 use PunktDe\Sylius\Api\ResultCollection;
 use PunktDe\Sylius\Api\Service\DefaultConfiguration;
@@ -20,12 +21,17 @@ class Product implements ApiDtoInterface, FileTransferringInterface
     protected $code;
 
     /**
-    * @var string[]
-    */
-    protected $options = [];
+     * @var string
+     */
+    protected $name;
 
     /**
      * @var string[]
+     */
+    protected $options = [];
+
+    /**
+     * @var string[][]
      */
     protected $translations = [];
 
@@ -35,9 +41,9 @@ class Product implements ApiDtoInterface, FileTransferringInterface
     protected $channels = [];
 
     /**
-     * @var string
+     * @var string[]
      */
-    protected $mainTaxon = '';
+    protected $mainTaxon = [];
 
     /**
      * @var bool
@@ -50,6 +56,11 @@ class Product implements ApiDtoInterface, FileTransferringInterface
     protected $imageTypes = [];
 
     /**
+     * @var string[][]
+     */
+    protected $images = [];
+
+    /**
      * @var PersistentResource[]
      */
     protected $uploadResources = [];
@@ -58,6 +69,14 @@ class Product implements ApiDtoInterface, FileTransferringInterface
      * @var string
      */
     protected $defaultLocale = '';
+
+    /**
+     * Collection of products associated with the created product (for example accessories to this product)
+     *
+     *
+     * @var string[]
+     */
+    protected $associations;
 
     public function __construct()
     {
@@ -78,6 +97,47 @@ class Product implements ApiDtoInterface, FileTransferringInterface
     }
 
     /**
+     * @param string $associationType
+     * @return ResultCollection
+     * @throws SyliusApiException
+     */
+    public function getAssociatedProducts(string $associationType): ResultCollection
+    {
+        $productResource = new ProductResource();
+        $associatedProducts = new ResultCollection();
+        foreach ($this->getAssociations() as $association) {
+            $associationCode = $association['type']['code'] ?? '';
+            if ($associationCode === $associationType) {
+                foreach ($association['associatedProducts'] as $associatedProductData) {
+                    $product = $productResource->get($associatedProductData['code']);
+                    if (!$product instanceof Product) {
+                        throw new SyliusApiException(sprintf('No product with code "%s" was found while fetching associatedProducts', $associatedProductData['code']), 1584565022);
+                    }
+                    $associatedProducts->add($product);
+                }
+            }
+        }
+
+        return $associatedProducts;
+    }
+
+    /**
+     * @return string
+     */
+    public function getDefaultLocale(): string
+    {
+        return $this->defaultLocale;
+    }
+
+    /**
+     * @return string[]
+     */
+    public function getAssociations(): array
+    {
+        return $this->associations;
+    }
+
+    /**
      * @return string
      */
     public function getCode(): string
@@ -86,8 +146,8 @@ class Product implements ApiDtoInterface, FileTransferringInterface
     }
 
     /**
-    * @return string[]
-    */
+     * @return string[]
+     */
     public function getOptions(): array
     {
         return $this->options;
@@ -110,18 +170,28 @@ class Product implements ApiDtoInterface, FileTransferringInterface
     }
 
     /**
-     * @return string
+     * @return string[]
      */
-    public function getMainTaxon(): string
+    public function getMainTaxon(): array
     {
         return $this->mainTaxon;
     }
 
     /**
-     * @param string $mainTaxon
+     * @param string $locale
+     * @return string
+     */
+    public function getMainTaxonName(string $locale = ''): string
+    {
+        $effectiveLocale = $locale ?: $this->defaultLocale;
+        return $this->mainTaxon['translations'][$effectiveLocale]['name'] ?? '--mainTaxon not named in locale' . $effectiveLocale;
+    }
+
+    /**
+     * @param string[] $mainTaxon
      * @return Product
      */
-    public function setMainTaxon(string $mainTaxon): Product
+    public function setMainTaxon(array $mainTaxon): Product
     {
         $this->mainTaxon = $mainTaxon;
         return $this;
@@ -136,6 +206,15 @@ class Product implements ApiDtoInterface, FileTransferringInterface
     {
         $this->translations[$locale ?: $this->defaultLocale]['slug'] = $slug;
         return $this;
+    }
+
+    /**
+     * @param string|null $locale
+     * @return string
+     */
+    public function getSlug(?string $locale = null): string
+    {
+        return $this->translations[$locale ?: $this->defaultLocale]['slug'] ?? '';
     }
 
     /**
@@ -159,6 +238,43 @@ class Product implements ApiDtoInterface, FileTransferringInterface
     {
         $effectiveLocale = $locale ?: $this->defaultLocale;
         return $this->translations[$effectiveLocale]['name'] ?? '--Product not named in locale' . $effectiveLocale;
+    }
+
+    /**
+     * @return string
+     */
+    public function getEntityName(): string
+    {
+        return $this->name;
+    }
+
+    /**
+     * @param string $name
+     */
+    public function setEntityName(string $name): Product
+    {
+        $this->name = $name;
+        return $this;
+    }
+
+    /**
+     * @param string $locale
+     * @return string
+     */
+    public function getDescription(string $locale = ''): string
+    {
+        $effectiveLocale = $locale ?: $this->defaultLocale;
+        return $this->translations[$effectiveLocale]['description'] ?? '--Product not named in locale' . $effectiveLocale;
+    }
+
+    /**
+     * @param string $locale
+     * @return string
+     */
+    public function getShortDescription(string $locale = ''): string
+    {
+        $effectiveLocale = $locale ?: $this->defaultLocale;
+        return $this->translations[$effectiveLocale]['shortDescription'] ?? '--Product not named in locale' . $effectiveLocale;
     }
 
     /**
@@ -213,19 +329,47 @@ class Product implements ApiDtoInterface, FileTransferringInterface
     }
 
     /**
-     * @return string[]
-     */
-    public function getImages(): array
-    {
-        return $this->imageTypes;
-    }
-
-    /**
      * @return PersistentResource[]
      */
     public function getUploadResources(): array
     {
         return $this->uploadResources;
+    }
+
+    /**
+     * @return string[]
+     */
+    public function getImages(): array
+    {
+        return $this->images;
+    }
+
+    /**
+     * @param string $type
+     * @return string
+     */
+    public function getImagePathByType(string $type = 'main'): string
+    {
+        if ($this->images === []) {
+            return '';
+        }
+
+        $defaultImagePath = '';
+        $searchedImagePath = null;
+        foreach (array_reverse($this->images) as $image) {
+            $imagePath = $image['path'] ?? '';
+            if ($imagePath === '') {
+                continue;
+            }
+
+            $defaultImagePath = $imagePath;
+            $imageType = $image['type'] ?? '';
+            if ($type !== '' && $type === $imageType) {
+                $searchedImagePath = $imagePath;
+            }
+        }
+
+        return $searchedImagePath ?: $defaultImagePath;
     }
 
     /**
@@ -235,6 +379,16 @@ class Product implements ApiDtoInterface, FileTransferringInterface
     public function setCode(string $code): Product
     {
         $this->code = $code;
+        return $this;
+    }
+
+    /**
+     * @param string[] $associations
+     * @return Product
+     */
+    public function setAssociations(array $associations): Product
+    {
+        $this->associations = $associations;
         return $this;
     }
 

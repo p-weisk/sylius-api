@@ -6,6 +6,7 @@ namespace PunktDe\Sylius\Api\Resource;
  *  All rights reserved.
  */
 
+use Closure;
 use Neos\Flow\Annotations as Flow;
 use GuzzleHttp\Exception\ClientException;
 use GuzzleHttp\Promise\PromiseInterface;
@@ -14,7 +15,7 @@ use Neos\Flow\ResourceManagement\Exception as ResourceManagementException;
 use Neos\Utility\Files;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Log\LogLevel;
-use PunktDe\Polyfill\LogEnvironment\Utility\LogEnvironment;
+use Neos\Flow\Log\Utility\LogEnvironment;
 use PunktDe\Sylius\Api\Client;
 use PunktDe\Sylius\Api\Dto\ApiDtoInterface;
 use PunktDe\Sylius\Api\Dto\FileTransferringInterface;
@@ -22,10 +23,12 @@ use PunktDe\Sylius\Api\Exception\SyliusApiException;
 use PunktDe\Sylius\Api\ResultCollection;
 use Symfony\Component\Serializer\Encoder\JsonDecode;
 use Symfony\Component\Serializer\Encoder\JsonEncoder;
+use Symfony\Component\Serializer\Exception\ExceptionInterface;
 use Symfony\Component\Serializer\Normalizer\PropertyNormalizer;
 use Symfony\Component\Serializer\Serializer;
+use function json_decode;
 
-abstract class AbstractResource
+abstract class AbstractResource implements ResourceInterface
 {
     /**
      * @Flow\Inject
@@ -64,6 +67,7 @@ abstract class AbstractResource
      * @param ApiDtoInterface $dto
      * @return ApiDtoInterface
      * @throws SyliusApiException
+     * @throws ExceptionInterface
      */
     public function add(ApiDtoInterface $dto): ?ApiDtoInterface
     {
@@ -74,6 +78,7 @@ abstract class AbstractResource
      * @param ApiDtoInterface $dto
      * @return PromiseInterface
      * @throws SyliusApiException
+     * @throws ExceptionInterface
      */
     protected function addAsync(ApiDtoInterface $dto): PromiseInterface
     {
@@ -85,6 +90,7 @@ abstract class AbstractResource
      * @param ApiDtoInterface $dto
      * @return bool
      * @throws SyliusApiException
+     * @throws ExceptionInterface
      */
     public function update(ApiDtoInterface $dto): bool
     {
@@ -95,6 +101,7 @@ abstract class AbstractResource
      * @param ApiDtoInterface $dto
      * @return PromiseInterface
      * @throws SyliusApiException
+     * @throws ExceptionInterface
      */
     protected function updateAsync(ApiDtoInterface $dto): PromiseInterface
     {
@@ -175,6 +182,7 @@ abstract class AbstractResource
      * @param string[] $criteria
      * @param int $limit
      * @param string[] $sorting
+     * @param string $parentResourceIdentifier
      * @return PromiseInterface
      */
     protected function getAllAsync(array $criteria, int $limit, array $sorting, string $parentResourceIdentifier = ''): PromiseInterface
@@ -281,6 +289,7 @@ abstract class AbstractResource
      * @param array $propertyDefinition
      * @return mixed[]
      * @throws SyliusApiException
+     * @throws ExceptionInterface
      */
     protected function convertDtoToArray(ApiDtoInterface $dto, array $propertyDefinition): array
     {
@@ -303,9 +312,9 @@ abstract class AbstractResource
     }
 
     /**
-     * @return \Closure
+     * @return Closure
      */
-    protected function responseToArray(): \Closure
+    protected function responseToArray(): Closure
     {
         return function (ResponseInterface $response) {
             return $this->jsonDecoder->decode((string)$response->getBody(), JsonEncoder::FORMAT);
@@ -313,9 +322,9 @@ abstract class AbstractResource
     }
 
     /**
-     * @return \Closure
+     * @return Closure
      */
-    protected function responseToCollection(): \Closure
+    protected function responseToCollection(): Closure
     {
         return function (ResponseInterface $response): ResultCollection {
             $responseArray = $this->jsonDecoder->decode((string)$response->getBody(), JsonEncoder::FORMAT);
@@ -340,9 +349,9 @@ abstract class AbstractResource
 
     /**
      * @param ApiDtoInterface $requestDto
-     * @return \Closure
+     * @return Closure
      */
-    protected function responseToDto(?ApiDtoInterface $requestDto = null): \Closure
+    protected function responseToDto(?ApiDtoInterface $requestDto = null): Closure
     {
         return function (ResponseInterface $response) use ($requestDto) {
             if ($response->getStatusCode() < 200 || $response->getStatusCode() > 300) {
@@ -356,22 +365,23 @@ abstract class AbstractResource
                 $this->logger->warning(sprintf('Sylius API Request for %s did not succeed. Status: %s Message %s', get_class($this), $response->getStatusCode(), $response->getBody()->getContents()), array_merge($debugData, LogEnvironment::fromMethodName(__METHOD__)));
                 return null;
             }
+
             return $this->serializer->deserialize((string)$response->getBody(), $this->getDtoClass(), 'json');
         };
     }
 
     /**
      * @param string $logLevel
-     * @return \Closure
+     * @return Closure
      */
-    protected function responseSucceeded($logLevel = LogLevel::WARNING): \Closure
+    protected function responseSucceeded($logLevel = LogLevel::WARNING): Closure
     {
         return function (ResponseInterface $response) use ($logLevel) {
             if ($response->getStatusCode() >= 200 && $response->getStatusCode() <= 300) {
                 return true;
             }
 
-            $errorMessage = \json_decode($response->getBody()->getContents(), true)['message'] ?? '';
+            $errorMessage = json_decode($response->getBody()->getContents(), true)['message'] ?? '';
             $this->logger->log($logLevel, sprintf('Sylius API Request for %s did not succeed. Status: %s Message %s', get_class($this), $response->getStatusCode(), $errorMessage), LogEnvironment::fromMethodName(__METHOD__));
             return false;
         };
